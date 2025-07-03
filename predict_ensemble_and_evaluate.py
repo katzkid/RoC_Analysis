@@ -101,6 +101,11 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
     all_fold_hard_preds = []
     for i, probas in enumerate(all_fold_probas):
         model_threshold = best_models_info[i]['threshold']
+        
+        # FIX: Convert tensor to float before comparison
+        if isinstance(model_threshold, torch.Tensor):
+            model_threshold = model_threshold.item()
+            
         hard_preds = (probas >= model_threshold).astype(int)
         all_fold_hard_preds.append(hard_preds)
     
@@ -108,6 +113,7 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
     num_models = len(all_fold_hard_preds)
     final_hard_preds = (sum_of_votes > num_models / 2).astype(int)
     
+    # Use ravel() to handle multi-class confusion matrices if they arise
     tn, fp, fn, tp = confusion_matrix(true_labels, final_hard_preds).ravel()
     hard_tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
     hard_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
