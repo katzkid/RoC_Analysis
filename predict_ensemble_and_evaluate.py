@@ -111,13 +111,19 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
     
     sum_of_votes = np.sum(np.array(all_fold_hard_preds), axis=0)
     num_models = len(all_fold_hard_preds)
-    final_hard_preds = (sum_of_votes > num_models / 2).astype(int)
+    #final_hard_preds = (sum_of_votes > num_models / 2).astype(int)
     
     # Use ravel() to handle multi-class confusion matrices if they arise
-    tn, fp, fn, tp = confusion_matrix(true_labels, final_hard_preds).ravel()
-    hard_tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
-    hard_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-    results['hard_voting'] = {'tpr': hard_tpr, 'fpr': hard_fpr}
+    #tn, fp, fn, tp = confusion_matrix(true_labels, final_hard_preds).ravel()
+    #hard_tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
+    #hard_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+    #results['hard_voting'] = {'tpr': hard_tpr, 'fpr': hard_fpr}
+
+    # Generate an ROC curve using the sum of votes as the prediction score
+    fpr_hv, tpr_hv, _ = roc_curve(true_labels, sum_of_votes)
+    # Find the index of the FPR on this new ROC curve closest to the target FPR
+    idx_hv = np.argmin(np.abs(fpr_hv - target_fpr))
+    results['hard_voting'] = {'tpr': tpr_hv[idx_hv], 'fpr': fpr_hv[idx_hv]}
 
     # --- Part 5: Print Summary and Return ---
     print("\n--- Ensemble Results ---")
