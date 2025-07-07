@@ -6,6 +6,7 @@ from sklearn.base import BaseEstimator
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import auc
+import pickle
 
 def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fpr):
     """
@@ -93,9 +94,11 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
 
     # -- 🍦 Soft Voting --
     ensemble_probas = np.mean(np.array(all_fold_probas), axis=0)
-    fpr_sv, tpr_sv, _ = roc_curve(true_labels, ensemble_probas)
-    idx_sv = np.argmin(np.abs(fpr_sv - target_fpr))
-    results['soft_voting'] = {'tpr': tpr_sv[idx_sv], 'fpr': fpr_sv[idx_sv]}
+    fpr_sv, tpr_sv, threshold_sv = roc_curve(true_labels, ensemble_probas)
+    # Find the optimal operating point on the full curve
+    valid_indices_sv = np.where(fpr_sv <= target_fpr)[0]
+    idx_sv = valid_indices_sv[np.argmax(tpr_sv[valid_indices_sv])] if len(valid_indices_sv) > 0 else np.argmin(np.abs(fpr_sv - target_fpr))
+    results['soft_voting'] = {'tpr': tpr_sv[idx_sv], 'fpr': fpr_sv[idx_sv], 'threshold': threshold_sv[idx_sv]}
     
     # -- 🗳️ Hard Voting --
     all_fold_hard_preds = []
@@ -110,7 +113,7 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
         all_fold_hard_preds.append(hard_preds)
     
     sum_of_votes = np.sum(np.array(all_fold_hard_preds), axis=0)
-    num_models = len(all_fold_hard_preds)
+    #num_models = len(all_fold_hard_preds)
     #final_hard_preds = (sum_of_votes > num_models / 2).astype(int)
     
     # Use ravel() to handle multi-class confusion matrices if they arise
@@ -120,10 +123,11 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
     #results['hard_voting'] = {'tpr': hard_tpr, 'fpr': hard_fpr}
 
     # Generate an ROC curve using the sum of votes as the prediction score
-    fpr_hv, tpr_hv, _ = roc_curve(true_labels, sum_of_votes)
-    # Find the index of the FPR on this new ROC curve closest to the target FPR
-    idx_hv = np.argmin(np.abs(fpr_hv - target_fpr))
-    results['hard_voting'] = {'tpr': tpr_hv[idx_hv], 'fpr': fpr_hv[idx_hv]}
+    fpr_hv, tpr_hv, threshold_hv = roc_curve(true_labels, sum_of_votes)
+    # Find the optimal operating point on the full curve
+    valid_indices_hv = np.where(fpr_hv <= target_fpr)[0]
+    idx_hv = valid_indices_hv[np.argmax(tpr_hv[valid_indices_hv])] if len(valid_indices_hv) > 0 else np.argmin(np.abs(fpr_hv - target_fpr))
+    results['hard_voting'] = {'tpr': tpr_hv[idx_hv], 'fpr': fpr_hv[idx_hv], 'threshold': threshold_hv[idx_hv]}
 
     # --- Part 5: Print Summary and Return ---
     print("\n--- Ensemble Results ---")
@@ -240,3 +244,67 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
     plt.legend(loc="lower right", fontsize=10)
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.show()
+
+
+
+def make_curve_monotonic(points):
+    """
+    Processes a list of ROC points to ensure the TPR is monotonically increasing.
+
+    Args:
+        points (List[Dict]): A list of dictionaries, each with 'fpr' and 'tpr' keys.
+
+    Returns:
+        List[Dict]: A new list of points representing a monotonic ROC curve.
+    """
+    if not points:
+        return []
+
+    # Sort points primarily by FPR, then by TPR as a tie-breaker
+    sorted_points = sorted(points, key=lambda p: (p['fpr'], p['tpr']))
+
+    monotonic_points = [sorted_points[0]]
+    for point in sorted_points[1:]:
+        # Get the last point added to our clean list
+        last_monotonic_point = monotonic_points[-1]
+
+        # Keep the new point only if it has a higher or equal TPR.
+        # This creates the "upper envelope" of the raw curve.
+        if point['tpr'] >= last_monotonic_point['tpr']:
+            monotonic_points.append(point)
+
+    return monotonic_points
+
+def save_to_pickle(list_folds_best_models, list_folds_weighted_clfs, results_original_roc, test_loader, filename=''):
+    
+
+    # 1. Group all objects into a single dictionary
+    data_to_save = {
+        'best_models': list_folds_best_models,
+        'weighted_clfs': list_folds_weighted_clfs,
+        'roc_results': results_original_roc,
+        'test_loader': test_loader
+    }
+
+    # 2. Save the dictionary to a file
+    with open(filename, 'wb') as f:
+        pickle.dump(data_to_save, f)
+
+    print(f"Data saved to {filename}")
+
+    return data_to_save
+
+def load_from_pickle(filename=''):
+    # Load the dictionary from the file
+    with open(filename, 'rb') as f:
+        loaded_data = pickle.load(f)
+
+    # Extract your variables
+    list_folds_best_models = loaded_data['best_models']
+    list_folds_weighted_clfs = loaded_data['weighted_clfs']
+    results_original_roc = loaded_data['roc_results']
+    test_loader = loaded_data['test_loader']
+
+    print("Data loaded successfully.")
+
+    return list_folds_best_models, list_folds_weighted_clfs, results_original_roc, test_loader

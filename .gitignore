@@ -5,3 +5,4 @@ myenv
 weights
 lightning_logs
 checkpoints
+pickle
