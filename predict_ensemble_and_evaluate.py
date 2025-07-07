@@ -8,59 +8,59 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import auc
 import pickle
 
-def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fpr):
+
+
+def predict_ensemble_and_evaluate(list_folds_best_models, test_loader):
     """
-    Performs soft and hard voting for PyTorch or Scikit-learn models,
-    using a PyTorch DataLoader as input.
+    Creates one large ensemble from all models across all folds, then
+    generates the full ROC curves for both soft and hard voting.
 
     Args:
-        list_folds_best_models (List[List[Dict]]): Contains model snapshots.
+        list_folds_best_models (List[List[Dict]]):
+            A list of lists. Each inner list represents a fold and contains
+            dictionaries for the best models from that fold.
         test_loader (DataLoader): DataLoader for the test dataset.
-        target_fpr (float): The target FPR to aim for.
 
     Returns:
-        dict: A dictionary with 'tpr' and 'fpr' for both methods, or None on error.
+        dict: A dictionary containing the ROC curve data for each voting method.
     """
-    # --- Part 1: Extract Full Dataset from Loader for Scikit-Learn Compatibility ---
-    print("Extracting full dataset from DataLoader for scikit-learn compatibility...")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # --- Part 1: Prepare Data and Models ---
+
+    # Flatten the list of lists into a single list containing all models
+    # This is the key change to include all models in the ensemble.
+    all_models_flat = [
+        model_dict
+        for fold in list_folds_best_models
+        for model_dict in fold
+    ]
+
+    if not all_models_flat:
+        print("Error: No models found after processing the input list.")
+        return None
+
+    print(f"Creating a single ensemble from {len(all_models_flat)} models across all folds.")
+
+    # Extract the full test set into NumPy arrays for scikit-learn compatibility
+    print("Extracting full dataset...")
     X_test_list, y_test_list = [], []
     with torch.no_grad():
         for inputs, labels in test_loader:
-            # Flatten image data for universal compatibility with sklearn models
-            # For tabular data, this reshape does nothing harmful
             X_test_list.append(inputs.cpu().numpy().reshape(len(inputs), -1))
             y_test_list.append(labels.cpu().numpy())
-            
     X_test = np.vstack(X_test_list)
     true_labels = np.concatenate(y_test_list).flatten()
-    print(f"-> Extracted {len(true_labels)} samples.\n")
 
-    # --- Part 2: Select Best Models ---
-    best_models_info = []
-    for i, fold_run_data in enumerate(list_folds_best_models):
-        best_snapshot = min(
-            (s for s in fold_run_data if "fpr" in s),
-            key=lambda s: abs(s["fpr"] - target_fpr),
-            default=None
-        )
-        if best_snapshot:
-            best_models_info.append(best_snapshot)
-        else:
-            print(f"Warning: Could not find a suitable model in Fold {i+1}. Skipping.")
 
-    if not best_models_info:
-        print("Error: No models were found. Cannot proceed.")
-        return None
-
-    # --- Part 3: Get Probabilities from Each Model (Unified Logic) ---
-    all_fold_probas = []
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    for snapshot in best_models_info:
-        model = snapshot['model']
+    # --- Part 2: Get Predictions from Every Model ---
+    print("Getting predictions from all models...")
+    all_probas = []
+    for item in all_models_flat:
+        model = item['model']
         fold_probas = None
 
-        # 🧠 PyTorch Model Logic (uses the efficient DataLoader)
+        # --- PyTorch Model Logic ---
         if isinstance(model, nn.Module):
             model.to(device)
             model.eval()
@@ -73,68 +73,37 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader, target_fp
                     probas_list.extend(probas.view(-1).cpu().numpy())
             fold_probas = np.array(probas_list)
 
-        # 🤖 Scikit-learn Model Logic (uses the extracted NumPy array)
+        # --- Scikit-learn Model Logic ---
         elif isinstance(model, BaseEstimator) and hasattr(model, 'predict_proba'):
-            # Uses the X_test array we created in Part 1
             probas = model.predict_proba(X_test)
             fold_probas = probas[:, 1]
-        
         else:
             print(f"Warning: Skipping model of unsupported type: {type(model)}")
             continue
-            
-        all_fold_probas.append(fold_probas)
-    
-    # --- Part 4: Calculate Results for Both Voting Methods ---
+
+        all_probas.append(fold_probas)
+
+    all_probas = np.array(all_probas)
     results = {}
 
-    if not all_fold_probas or np.array(all_fold_probas).size == 0:
-        print("Error: No model probabilities were generated. Cannot calculate metrics.")
-        return None
+    # --- Part 3: Soft Voting (Averaging all model probabilities) ---
+    soft_vote_probas = np.mean(all_probas, axis=0)
+    fpr_sv, tpr_sv, thresholds_sv = roc_curve(true_labels, soft_vote_probas)
+    results['soft_voting'] = [{'fpr': f, 'tpr': t, 'threshold': th} for f, t, th in zip(fpr_sv, tpr_sv, thresholds_sv)]
 
-    # -- 🍦 Soft Voting --
-    ensemble_probas = np.mean(np.array(all_fold_probas), axis=0)
-    fpr_sv, tpr_sv, threshold_sv = roc_curve(true_labels, ensemble_probas)
-    # Find the optimal operating point on the full curve
-    valid_indices_sv = np.where(fpr_sv <= target_fpr)[0]
-    idx_sv = valid_indices_sv[np.argmax(tpr_sv[valid_indices_sv])] if len(valid_indices_sv) > 0 else np.argmin(np.abs(fpr_sv - target_fpr))
-    results['soft_voting'] = {'tpr': tpr_sv[idx_sv], 'fpr': fpr_sv[idx_sv], 'threshold': threshold_sv[idx_sv]}
-    
-    # -- 🗳️ Hard Voting --
-    all_fold_hard_preds = []
-    for i, probas in enumerate(all_fold_probas):
-        model_threshold = best_models_info[i]['threshold']
-        
-        # FIX: Convert tensor to float before comparison
-        if isinstance(model_threshold, torch.Tensor):
-            model_threshold = model_threshold.item()
-            
-        hard_preds = (probas >= model_threshold).astype(int)
-        all_fold_hard_preds.append(hard_preds)
-    
-    sum_of_votes = np.sum(np.array(all_fold_hard_preds), axis=0)
-    #num_models = len(all_fold_hard_preds)
-    #final_hard_preds = (sum_of_votes > num_models / 2).astype(int)
-    
-    # Use ravel() to handle multi-class confusion matrices if they arise
-    #tn, fp, fn, tp = confusion_matrix(true_labels, final_hard_preds).ravel()
-    #hard_tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
-    #hard_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-    #results['hard_voting'] = {'tpr': hard_tpr, 'fpr': hard_fpr}
+    # --- Part 4: Hard Voting (Summing votes from all models) ---
+    all_votes = []
+    for i, probas in enumerate(all_probas):
+        threshold = all_models_flat[i]['threshold']
+        if isinstance(threshold, torch.Tensor):
+            threshold = threshold.item()
+        votes = (probas >= threshold).astype(int)
+        all_votes.append(votes)
 
-    # Generate an ROC curve using the sum of votes as the prediction score
-    fpr_hv, tpr_hv, threshold_hv = roc_curve(true_labels, sum_of_votes)
-    # Find the optimal operating point on the full curve
-    valid_indices_hv = np.where(fpr_hv <= target_fpr)[0]
-    idx_hv = valid_indices_hv[np.argmax(tpr_hv[valid_indices_hv])] if len(valid_indices_hv) > 0 else np.argmin(np.abs(fpr_hv - target_fpr))
-    results['hard_voting'] = {'tpr': tpr_hv[idx_hv], 'fpr': fpr_hv[idx_hv], 'threshold': threshold_hv[idx_hv]}
+    hard_vote_scores = np.sum(np.array(all_votes), axis=0)
+    fpr_hv, tpr_hv, thresholds_hv = roc_curve(true_labels, hard_vote_scores)
+    results['hard_voting'] = [{'fpr': f, 'tpr': t, 'threshold': th} for f, t, th in zip(fpr_hv, tpr_hv, thresholds_hv)]
 
-    # --- Part 5: Print Summary and Return ---
-    print("\n--- Ensemble Results ---")
-    print(f"Target FPR: {target_fpr:.4f}")
-    print(f"Soft Voting -> Achieved [TPR: {results['soft_voting']['tpr']:.4f}, FPR: {results['soft_voting']['fpr']:.4f}]")
-    print(f"Hard Voting -> Resulted in [TPR: {results['hard_voting']['tpr']:.4f}, FPR: {results['hard_voting']['fpr']:.4f}]")
-    
     return results
 
 
