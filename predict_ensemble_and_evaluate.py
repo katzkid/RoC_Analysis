@@ -108,7 +108,7 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader):
 
 
 
-def plot_roc_comparison(results_lists, names, results_original_roc):
+def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = "No name specified"):
     """
     Creates a plot comparing the performance of multiple classifier sets.
     Each set's performance is shown as a connected line of points.
@@ -124,6 +124,24 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
                                      - "fpr" (array-like): The false positive rates.
                                      - "tpr" (array-like): The true positive rates.
     """
+    linestyle_tuple = [
+     ('loosely dotted',        (0, (1, 10))),
+     ('dotted',                (0, (1, 5))),
+     ('densely dotted',        (0, (1, 1))),
+
+     ('long dash with offset', (5, (10, 3))),
+     ('loosely dashed',        (0, (5, 10))),
+     ('dashed',                (0, (5, 5))),
+     ('densely dashed',        (0, (5, 1))),
+
+     ('loosely dashdotted',    (0, (3, 10, 1, 10))),
+     ('dashdotted',            (0, (3, 5, 1, 5))),
+     ('densely dashdotted',    (0, (3, 1, 1, 1))),
+
+     ('dashdotdotted',         (0, (3, 5, 1, 5, 1, 5))),
+     ('loosely dashdotdotted', (0, (3, 10, 1, 10, 1, 10))),
+     ('densely dashdotdotted', (0, (3, 1, 1, 1, 1, 1)))]
+
     # --- Input Validation ---
     if not results_lists or not names:
         print("No results or names provided to plot.")
@@ -162,6 +180,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
         linestyle = '-'
         alpha_value = 0.8
         plot_zorder =  3 # zorder brings the line to the front
+        marker='+'
 
         # reset plot parameters
         is_soft = False
@@ -171,7 +190,15 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
         roc_auc = auc(df_sorted["fpr"], df_sorted["tpr"])
 
         # --- MODIFICATION START ---
-        # Check if the current list is the last one
+        
+        is_weighted = "Weighted" in name
+        if is_weighted:
+            num_shades = 5  # Number of shades for the weighted classifiers
+            marker = '^'  # Change marker for weighted classifiers to triangle
+            colors2 = [str(g) for g in np.linspace(0.2, 0.7, num_shades)]
+            color = colors2[i % len(colors2)]
+            linestyle = linestyle_tuple[i % len(linestyle_tuple)][1]  # Use a different linestyle for weighted classifiers
+
         is_soft = (name == "Ensemble_voting_soft")
 
         is_hard = (name == "Ensemble_voting_hard")
@@ -182,6 +209,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
             linestyle = '--' 
             alpha_value = 0.9 
             plot_zorder = 5 
+            marker = 'o'  # Use circle markers for soft/hard voting
             if is_soft:
                 color = 'red'
             else:
@@ -191,11 +219,11 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
         # Plot the line connecting the points for this set
         plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
                  linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
-                 label=f'{name} (AUC = {roc_auc:.2f})')
+                 label=f'{name} (AUC = {roc_auc:.2f})', marker=marker)
 
         # Plot the individual model points as a scatter plot
-        plt.scatter(df_sorted['fpr'], df_sorted['tpr'], c=color, marker='o', 
-                    alpha=0.6, s=80, zorder=plot_zorder + 1) # Place scatter points on top of the line
+        #plt.scatter(df_sorted['fpr'], df_sorted['tpr'], c=color, marker=marker, 
+        #            alpha=0.6, s=80, zorder=plot_zorder + 1) # Place scatter points on top of the line
 
     # --- Plot the original ROC curve for reference ---
     if results_original_roc:
@@ -212,8 +240,11 @@ def plot_roc_comparison(results_lists, names, results_original_roc):
     plt.title('Receiver Operating Characteristic (ROC) Comparison', fontsize=16)
     plt.legend(loc="lower right", fontsize=10)
     plt.grid(True, linestyle='--', alpha=0.6)
+    full_path_plot = f"Figures/{plot_name}.png"
+    plt.savefig(full_path_plot)
     plt.show()
 
+    
 
 
 def make_curve_monotonic(points):
