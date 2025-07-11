@@ -203,6 +203,8 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
 
         is_hard = (name == "Ensemble_voting_hard")
 
+        is_NP = (name == "Neyman_Pearson")
+
         if is_soft or is_hard:
             # Set distinctive styles for the last line, and standard for others
             linewidth = 3.0 
@@ -211,9 +213,18 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
             plot_zorder = 5 
             marker = 'o'  # Use circle markers for soft/hard voting
             if is_soft:
-                color = 'red'
+                color = 'pink'
             else:
                 color = 'green'
+
+        if is_NP:
+            # Set distinctive styles for the Neyman-Pearson line
+            linewidth = 2.5 
+            linestyle = ':' 
+            alpha_value = 0.9 
+            plot_zorder = 4 
+            marker = 's'  # Use square markers for Neyman-Pearson
+            color = 'red'
         # --- MODIFICATION END ---
 
         # Plot the line connecting the points for this set
@@ -308,3 +319,30 @@ def load_from_pickle(filename=''):
     print("Data loaded successfully.")
 
     return list_folds_best_models, list_folds_weighted_clfs, results_original_roc, test_loader
+
+def save_to_pickle_constrained_roc(constrained_points, filename=''):
+    """
+    Saves the constrained ROC curve points to a pickle file.
+
+    Args:
+        constrained_points (List[Dict]): The constrained ROC curve points.
+        filename (str): The name of the file to save the points to.
+    """
+    with open(filename, 'wb') as f:
+        pickle.dump(constrained_points, f)
+    print(f"Constrained ROC curve points saved to {filename}")
+
+def load_from_pickle_constrained_roc(filename=''):
+    """
+    Loads the constrained ROC curve points from a pickle file.
+
+    Args:
+        filename (str): The name of the file to load the points from.
+
+    Returns:
+        List[Dict]: The constrained ROC curve points.
+    """
+    with open(filename, 'rb') as f:
+        constrained_points = pickle.load(f)
+    print(f"Constrained ROC curve points loaded from {filename}")
+    return constrained_points
