@@ -51,6 +51,8 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader):
             y_test_list.append(labels.cpu().numpy())
     X_test = np.vstack(X_test_list)
     true_labels = np.concatenate(y_test_list).flatten()
+    # prior probability
+    prior_prob = np.mean(true_labels)
 
 
     # --- Part 2: Get Predictions from Every Model ---
@@ -104,11 +106,14 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader):
     fpr_hv, tpr_hv, thresholds_hv = roc_curve(true_labels, hard_vote_scores)
     results['hard_voting'] = [{'fpr': f, 'tpr': t, 'threshold': th} for f, t, th in zip(fpr_hv, tpr_hv, thresholds_hv)]
 
-    return results
+    # misclassification risk
+    mis_risk = prior_prob * (1 - tpr_hv) + (1 - prior_prob) * fpr_hv
+    results['misclassification_risk'] = [{'fpr': f, 'tpr': t, 'threshold': th} for f, t, th in zip(fpr_hv, mis_risk, thresholds_hv)]
+    return results, prior_prob
 
 
 
-def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = "No name specified"):
+def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = "No name specified", prior_prob=0.5):
     """
     Creates a plot comparing the performance of multiple classifier sets.
     Each set's performance is shown as a connected line of points.
@@ -227,10 +232,19 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
             color = 'red'
         # --- MODIFICATION END ---
 
-        # Plot the line connecting the points for this set
-        plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
-                 linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
-                 label=f'{name} (AUC = {roc_auc:.2f})', marker=marker)
+        is_missclassification_risk = (name == "Misclassification_Risk")
+        if is_missclassification_risk:
+            # Plot the misclassification risk curve with a different style
+            plt.plot(df_sorted['fpr'], df_sorted['tpr'], color='lime', lw=linewidth,
+                     linestyle='-.', alpha=alpha_value, zorder=plot_zorder + 1,
+                     label=f'{name}', marker=marker)
+        else:
+            # Plot the line connecting the points for this set
+            plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
+                     linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
+                     label=f'{name} (AUC = {roc_auc:.2f})', marker=marker)
+        
+        
 
         # Plot the individual model points as a scatter plot
         #plt.scatter(df_sorted['fpr'], df_sorted['tpr'], c=color, marker=marker, 
@@ -238,6 +252,11 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
 
     # --- Plot the original ROC curve for reference ---
     if results_original_roc:
+        # Misclassification risk
+        misclassification_risk_orig = prior_prob * (1 - results_original_roc["tpr"]) + (1 - prior_prob) * results_original_roc["fpr"]
+        plt.plot(results_original_roc["fpr"], misclassification_risk_orig, color='cyan', lw=linewidth,
+                 linestyle='-.', alpha=alpha_value, zorder=4,
+                 label=f'Misclassification Risk Original')
         plt.plot(results_original_roc["fpr"], results_original_roc["tpr"], color='blue', lw=2.5,
                  label=f'{results_original_roc["name"]} (AUC = {results_original_roc["auc"]:.2f})')
 
