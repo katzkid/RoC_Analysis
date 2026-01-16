@@ -291,13 +291,35 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
     plt.xlabel('False Positive Rate (FPR)', fontsize=12)
     plt.ylabel('True Positive Rate (TPR)', fontsize=12)
     plt.title('Receiver Operating Characteristic (ROC) Comparison', fontsize=16)
-    plt.legend(loc="lower right", fontsize=10)
+    
     plt.grid(True, linestyle='--', alpha=0.6)
     if misclassification_risk is not None:
         plt.annotate(f'Misclassification risk {results_original_roc["name"]}: {misclassification_risk[0]["risk"]:.2f}', xy=(0.65, 0.2), xycoords='axes fraction', fontsize=10,
                  bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.3))
         plt.annotate(f'Misclassification risk ensemble: {misclassification_risk[1]["risk"]:.2f}', xy=(0.65, 0.15), xycoords='axes fraction', fontsize=10,
                  bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.3))
+        # Plotting the Optimal Points corresponding to threshold 0.5
+        # Point 0: Original Model
+        fpr0 = misclassification_risk[0]["fpr"]
+        tpr0 = misclassification_risk[0]["tpr"]
+        plt.scatter(fpr0, tpr0, color='blue', marker='*', s=250, edgecolors='gold', 
+                    linewidths=1.5, zorder=10, label=f'Min Risk Point ({results_original_roc["name"]})')
+        
+        plt.text(fpr0 + 0.02, tpr0 - 0.02, f"({fpr0:.2f}, {tpr0:.2f})", 
+                 fontsize=9, fontweight='bold', color='navy', zorder=11,
+                 bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.7, ec="none"))
+
+        # Point 1: Ensemble Model
+        fpr1 = misclassification_risk[1]["fpr"]
+        tpr1 = misclassification_risk[1]["tpr"]
+        plt.scatter(fpr1, tpr1, color='green', marker='*', s=250, edgecolors='gold', 
+                    linewidths=1.5, zorder=10, label='Min Risk Point (Ensemble)')
+        
+        plt.text(fpr1 + 0.02, tpr1 - 0.02, f"({fpr1:.2f}, {tpr1:.2f})", 
+                 fontsize=9, fontweight='bold', color='darkgreen', zorder=11,
+                 bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.7, ec="none"))
+    
+    plt.legend(loc="lower right", fontsize=10)
     full_path_plot = f"Figures/{plot_name}.png"
     plt.savefig(full_path_plot)
     plt.show()
