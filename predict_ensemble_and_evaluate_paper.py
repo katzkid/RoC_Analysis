@@ -225,11 +225,22 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
             color = colors2[i % len(colors2)]
             linestyle = linestyle_tuple[i % len(linestyle_tuple)][1]  # Use a different linestyle for weighted classifiers
 
+        is_full_weighted = (name == "Weighted Classifiers")
+
         is_soft = (name == "Ensemble_voting_soft")
 
-        is_hard = (name == "Ensemble_voting_hard")
+        is_hard = (name == "Expert Ensemble")
 
         is_NP = (name == "Neyman_Pearson")
+
+        if is_full_weighted:
+            # Set distinctive styles for the full weighted classifiers line
+            linewidth = 2.5 
+            linestyle = '-.' 
+            alpha_value = 0.9 
+            plot_zorder = 4 
+            marker = 'D'  # Use diamond markers for full weighted classifiers
+            color = 'orange'
 
         if is_soft or is_hard:
             # Set distinctive styles for the last line, and standard for others
@@ -265,7 +276,12 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
         #             linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
         #             label=f'{name} (AUC = {roc_auc:.2f})', marker=marker)
         
-        plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
+        if is_soft or is_hard:
+            plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
+                     linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
+                     label=f'{name} (AUC = {roc_auc:.2f}) (Risk = {misclassification_risk[1]["risk"]:.2f})', marker=marker)
+        else:
+            plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
                      linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
                      label=f'{name} (AUC = {roc_auc:.2f})', marker=marker)
 
@@ -281,7 +297,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
         #         linestyle='-.', alpha=alpha_value, zorder=4,
         #         label=f'Misclassification Risk Original')
         plt.plot(results_original_roc["fpr"], results_original_roc["tpr"], color='blue', lw=2.5,
-                 label=f'{results_original_roc["name"]} (AUC = {results_original_roc["auc"]:.2f})')
+                 label=f'{"Base Classifier"} (AUC = {results_original_roc["auc"]:.2f}) (Risk = {misclassification_risk[0]["risk"]:.2f})')
 
     # --- Final plot styling ---
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--') # "No-skill" line
@@ -294,16 +310,12 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
     
     plt.grid(True, linestyle='--', alpha=0.6)
     if misclassification_risk is not None:
-        plt.annotate(f'Misclassification risk {results_original_roc["name"]}: {misclassification_risk[0]["risk"]:.2f}', xy=(0.65, 0.2), xycoords='axes fraction', fontsize=10,
-                 bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.3))
-        plt.annotate(f'Misclassification risk ensemble: {misclassification_risk[1]["risk"]:.2f}', xy=(0.65, 0.15), xycoords='axes fraction', fontsize=10,
-                 bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.3))
         # Plotting the Optimal Points corresponding to threshold 0.5
         # Point 0: Original Model
         fpr0 = misclassification_risk[0]["fpr"]
         tpr0 = misclassification_risk[0]["tpr"]
         plt.scatter(fpr0, tpr0, color='blue', marker='*', s=250, edgecolors='gold', 
-                    linewidths=1.5, zorder=10, label=f'Min Risk Point ({results_original_roc["name"]})')
+                    linewidths=1.5, zorder=10, label=f'Min Risk Point ({"Base Classifier"})')
         
         plt.text(fpr0 + 0.02, tpr0 - 0.02, f"({fpr0:.2f}, {tpr0:.2f})", 
                  fontsize=9, fontweight='bold', color='navy', zorder=11,
@@ -313,7 +325,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
         fpr1 = misclassification_risk[1]["fpr"]
         tpr1 = misclassification_risk[1]["tpr"]
         plt.scatter(fpr1, tpr1, color='green', marker='*', s=250, edgecolors='gold', 
-                    linewidths=1.5, zorder=10, label='Min Risk Point (Ensemble)')
+                    linewidths=1.5, zorder=10, label='Min Risk Point (Expert Ensemble)')
         
         plt.text(fpr1 + 0.02, tpr1 - 0.02, f"({fpr1:.2f}, {tpr1:.2f})", 
                  fontsize=9, fontweight='bold', color='darkgreen', zorder=11,
@@ -414,4 +426,31 @@ def load_from_pickle_constrained_roc(filename=''):
         constrained_points = pickle.load(f)
     print(f"Constrained ROC curve points loaded from {filename}")
     return constrained_points
+
+def save_to_pickle_full_weighted_roc(list_full_weighted_clfs , filename=''):
+    """
+    Saves the full weighted ROC curve points to a pickle file.
+
+    Args:
+        constrained_points (List[Dict]): The constrained ROC curve points.
+        filename (str): The name of the file to save the points to.
+    """
+    with open(filename, 'wb') as f:
+        pickle.dump(list_full_weighted_clfs, f)
+    print(f"Constrained ROC curve points saved to {filename}")
+
+def load_from_pickle_full_weighted_roc(filename=''):
+    """
+    Loads the constrained ROC curve points from a pickle file.
+
+    Args:
+        filename (str): The name of the file to load the points from.
+
+    Returns:
+        List[Dict]: The constrained ROC curve points.
+    """
+    with open(filename, 'rb') as f:
+        list_full_weighted_clfs = pickle.load(f)
+    print(f"Constrained ROC curve points loaded from {filename}")
+    return list_full_weighted_clfs
 
