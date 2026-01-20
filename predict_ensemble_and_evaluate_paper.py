@@ -229,7 +229,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
 
         is_soft = (name == "Ensemble_voting_soft")
 
-        is_hard = (name == "Expert Ensemble")
+        is_hard = (name == "Ensemble_voting_hard")
 
         is_NP = (name == "Neyman_Pearson")
 
@@ -252,6 +252,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
             if is_soft:
                 color = 'pink'
             else:
+                name = 'Expert Ensemble'
                 color = 'green'
 
         if is_NP:
