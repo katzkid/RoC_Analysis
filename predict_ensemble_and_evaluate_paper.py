@@ -122,12 +122,14 @@ def predict_ensemble_and_evaluate(list_folds_best_models, test_loader):
     fpr_half = fp/(fp + tn) if(fp + tn) > 0 else 0.0
 
     risk_05 = prior_prob * (1 - tpr_half) + (1 - prior_prob) * (fpr_half)
+    f1 = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0.0
 
     results['misclassification_risk_half'] = {
         'risk' : risk_05,
         'tpr' : tpr_half,
         'fpr' : fpr_half,
-        'threshold' : th_05
+        'threshold' : th_05,
+        'f1': f1
     }
 
     return results, prior_prob
@@ -280,7 +282,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
         if is_soft or is_hard:
             plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
                      linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
-                     label=f'{name} (AUC = {roc_auc:.2f}) (Risk = {misclassification_risk[1]["risk"]:.2f})', marker=marker)
+                     label=f'{name} (AUC = {roc_auc:.2f}) (F1 = {misclassification_risk[1]["f1"]:.2f}) (Risk = {misclassification_risk[1]["risk"]:.2f})', marker=marker)
         else:
             plt.plot(df_sorted['fpr'], df_sorted['tpr'], color=color, lw=linewidth,
                      linestyle=linestyle, alpha=alpha_value, zorder=plot_zorder,
@@ -298,7 +300,7 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
         #         linestyle='-.', alpha=alpha_value, zorder=4,
         #         label=f'Misclassification Risk Original')
         plt.plot(results_original_roc["fpr"], results_original_roc["tpr"], color='blue', lw=2.5,
-                 label=f'{"Base Classifier"} (AUC = {results_original_roc["auc"]:.2f}) (Risk = {misclassification_risk[0]["risk"]:.2f})')
+                 label=f'{"Base Classifier"} (AUC = {results_original_roc["auc"]:.2f}) (F1 = {misclassification_risk[0]["f1"]:.2f}) (Risk = {misclassification_risk[0]["risk"]:.2f})')
 
     # --- Final plot styling ---
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--') # "No-skill" line
