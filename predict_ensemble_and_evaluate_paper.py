@@ -199,7 +199,11 @@ def plot_roc_comparison(results_lists, names, results_original_roc, plot_name = 
             print(f"Skipping '{name}' due to missing 'fpr' or 'tpr' keys in its data.")
             continue
             
-        df_sorted = df.sort_values(by='fpr').reset_index(drop=True)
+
+        anchors = pd.DataFrame({'fpr': [0.0, 1.0], 'tpr': [0.0, 1.0]})
+        df = pd.concat([df, anchors], ignore_index=True)
+        df_sorted = df.sort_values(by='fpr').drop_duplicates(subset=['fpr'], keep='last').reset_index(drop=True)
+
         
         # Select a color for this set
         color = colors[i % len(colors)]
